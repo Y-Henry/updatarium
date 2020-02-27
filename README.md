@@ -135,7 +135,30 @@ and the second arguments is a regex pattern to select changeLogs files):
 ```kotlin
 Updatarium().executeChangeLogs(resourcesDirectory, "changeLog(.*).kts")
 ```
- 
+
+#### Pre-conditions
+You can add pre-condition to a changeLog or a changeSet. If the precondition return false, the changeLog/changeSet will be ignored.
+You can also use operator `and`, `or` and `not` to compose with your predicates.
+
+```kotlin
+changeLog {
+    preCondition = not { myPokemonTeam.isEmpty() }
+
+    changeSet(id = "ChangeSet-1_fight-pokemon-league", author = "Sacha") {
+        preCondition = { badgeNumber < 8 } or ( { "magikarp" in myPokemonTeam } or { "pidgey" in myPokemonTeam } )
+        action {
+            logger.info { "Are you crazy ? You're team is so weak" }
+        }
+    }
+    changeSet(id = "ChangeSet-1_fight-pokemon-league", author = "Sacha") {
+        preCondition = { badgeNumber >= 8 } and { "mewtwo" in myPokemonTeam }
+        action {
+            logger.info { "You'll defeat the league so easily!" }
+        }
+    }
+}
+```
+
 #### The tag system
 
 You can add some tags into a changeSet like this : 

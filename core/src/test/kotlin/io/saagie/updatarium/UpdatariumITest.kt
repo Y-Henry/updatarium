@@ -18,13 +18,9 @@ package io.saagie.updatarium
  * limitations under the License.
  */
 import assertk.assertThat
-import assertk.assertions.containsExactly
-import assertk.assertions.extracting
-import assertk.assertions.hasSize
-import assertk.assertions.isEqualTo
+import assertk.assertions.*
 import io.saagie.updatarium.config.UpdatariumConfiguration
-import io.saagie.updatarium.model.UpdatariumError
-import io.saagie.updatarium.model.changeLog
+import io.saagie.updatarium.model.*
 import io.saagie.updatarium.persist.TestPersistEngine
 import java.nio.file.Files
 import java.nio.file.Paths
@@ -448,6 +444,151 @@ class UpdatariumITest {
         fun `should return Int_MAX_VALUE if configuration_listFilesRecursively is set at true`() {
             val maxDepth = Updatarium(getConfig().copy(listFilesRecursively = true)).generateMaxDepth()
             assertThat(maxDepth).isEqualTo(Int.MAX_VALUE)
+        }
+    }
+
+    @Test
+    fun `should correctly ignored a changelog from DSL with precondition equals to false`() {
+        with(getConfig()) {
+            Updatarium(this)
+                .executeChangeLog(
+                    changeLog(id = "ShouldNotBeExecuted") {
+                        preCondition = { false }
+                        changeSet(id = "1-notExecuted", author = "Toto") {
+                            action { logger.info { "should be ignored" } }
+                        }
+                    }
+                )
+
+            assertThat((this.persistEngine as TestPersistEngine).changeSetTested).isEmpty()
+            assertThat((this.persistEngine as TestPersistEngine).changeSetTested).isEmpty()
+            assertThat((this.persistEngine as TestPersistEngine).changeSetUnLocked).isEmpty()
+        }
+    }
+
+    @Test
+    fun `should correctly executed a changelog from DSL with precondition equals to true`() {
+        with(getConfig()) {
+            Updatarium(this)
+                .executeChangeLog(
+                    changeLog(id = "ShouldBeExecuted") {
+                        preCondition = { true }
+                        changeSet(id = "1-executed", author = "Toto") {
+                            action { logger.info { "should be executed" } }
+                        }
+                    }
+                )
+
+            assertThat((this.persistEngine as TestPersistEngine).changeSetTested).hasSize(1)
+            assertThat((this.persistEngine as TestPersistEngine).changeSetTested)
+                .containsExactly("ShouldBeExecuted_1-executed")
+            assertThat((this.persistEngine as TestPersistEngine).changeSetUnLocked)
+                .extracting { it.executionId }
+                .containsExactly("ShouldBeExecuted_1-executed")
+        }
+    }
+
+    @Test
+    fun `should correctly ignored a changeSet from DSL with preconditions equals to false`() {
+        with(getConfig()) {
+            Updatarium(this)
+                .executeChangeLog(
+                    changeLog(id = "ShouldBeExecuted") {
+                        changeSet(id = "1-notExecuted", author = "Toto") {
+                            preCondition = { false }
+                            action { logger.info { "should be ignored" } }
+                        }
+                        changeSet(id = "2-executed", author = "Toto") {
+                            preCondition = { true }
+                            action { logger.info { "should be executed" } }
+                        }
+                    }
+                )
+
+            assertThat((this.persistEngine as TestPersistEngine).changeSetTested).hasSize(1)
+            assertThat((this.persistEngine as TestPersistEngine).changeSetTested)
+                .containsExactly("ShouldBeExecuted_2-executed")
+            assertThat((this.persistEngine as TestPersistEngine).changeSetUnLocked)
+                .extracting { it.executionId }
+                .containsExactly("ShouldBeExecuted_2-executed")
+        }
+    }
+
+    @Test
+    fun `should correctly ignored a changeSet from DSL with preconditions containing a not`() {
+        with(getConfig()) {
+            Updatarium(this)
+                .executeChangeLog(
+                    changeLog(id = "ShouldBeExecuted") {
+                        changeSet(id = "1-notExecuted", author = "Toto") {
+                            preCondition = not { true }
+                            action { logger.info { "should be ignored" } }
+                        }
+                        changeSet(id = "2-executed", author = "Toto") {
+                            preCondition = not { false }
+                            action { logger.info { "should be executed" } }
+                        }
+                    }
+                )
+
+            assertThat((this.persistEngine as TestPersistEngine).changeSetTested).hasSize(1)
+            assertThat((this.persistEngine as TestPersistEngine).changeSetTested)
+                .containsExactly("ShouldBeExecuted_2-executed")
+            assertThat((this.persistEngine as TestPersistEngine).changeSetUnLocked)
+                .extracting { it.executionId }
+                .containsExactly("ShouldBeExecuted_2-executed")
+        }
+    }
+
+    @Test
+    fun `should correctly ignored a changeSet from DSL with preconditions containing a and`() {
+        with(getConfig()) {
+            Updatarium(this)
+                .executeChangeLog(
+                    changeLog(id = "ShouldBeExecuted") {
+                        changeSet(id = "1-notExecuted", author = "Toto") {
+                            preCondition = { false } and { true }
+                            action { logger.info { "should be ignored" } }
+                        }
+                        changeSet(id = "2-executed", author = "Toto") {
+                            preCondition = { true } and { true }
+                            action { logger.info { "should be executed" } }
+                        }
+                    }
+                )
+
+            assertThat((this.persistEngine as TestPersistEngine).changeSetTested).hasSize(1)
+            assertThat((this.persistEngine as TestPersistEngine).changeSetTested)
+                .containsExactly("ShouldBeExecuted_2-executed")
+            assertThat((this.persistEngine as TestPersistEngine).changeSetUnLocked)
+                .extracting { it.executionId }
+                .containsExactly("ShouldBeExecuted_2-executed")
+        }
+    }
+
+    @Test
+    fun `should correctly ignored a changeSet from DSL with preconditions containing a or`() {
+        with(getConfig()) {
+            Updatarium(this)
+                .executeChangeLog(
+                    changeLog(id = "ShouldBeExecuted") {
+                        changeSet(id = "1-notExecuted", author = "Toto") {
+                            preCondition = { false } or { false }
+                            action { logger.info { "should be ignored" } }
+                        }
+                        changeSet(id = "2-executed", author = "Toto") {
+                            preCondition = { false } or { true }
+                            action { logger.info { "should be executed" } }
+                        }
+                    }
+                )
+
+            assertThat((this.persistEngine as TestPersistEngine).changeSetTested).hasSize(1)
+            assertThat((this.persistEngine as TestPersistEngine).changeSetTested)
+                .containsExactly("ShouldBeExecuted_2-executed")
+            assertThat((this.persistEngine as TestPersistEngine).changeSetUnLocked)
+                .extracting { it.executionId }
+                .containsExactly("ShouldBeExecuted_2-executed")
         }
     }
 }

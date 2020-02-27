@@ -25,6 +25,7 @@ data class ChangeSet(
     private val id: String,
     val author: String,
     val tags: List<String> = emptyList(),
+    val preCondition: () -> Boolean = { true },
     val actions: List<Action> = emptyList()
 ) : KLoggable {
     override val logger = logger()
@@ -50,25 +51,29 @@ data class ChangeSet(
         configuration: UpdatariumConfiguration = UpdatariumConfiguration()
     ): List<ChangeSetError> {
         val executionId = computeId(changeLogId)
-        return if (!configuration.persistEngine.notAlreadyExecuted(executionId)) {
-            logger.info { "$executionId already executed" }
-            emptyList()
-        } else {
-            logger.info { "$executionId will be executed" }
-            val maybeError = with(configuration.persistEngine) {
-                runWithPersistEngine(executionId, lock = !configuration.dryRun) {
-                    this.actions.forEach {
-                        if (configuration.dryRun) {
-                            logger.warn { "DryRun => don't run it" }
-                        } else {
-                            it.execute()
+        if (preCondition()) {
+            return if (!configuration.persistEngine.notAlreadyExecuted(executionId)) {
+                logger.info { "$executionId already executed" }
+                emptyList()
+            } else {
+                logger.info { "$executionId will be executed" }
+                val maybeError = with(configuration.persistEngine) {
+                    runWithPersistEngine(executionId, lock = !configuration.dryRun) {
+                        this.actions.forEach {
+                            if (configuration.dryRun) {
+                                logger.warn { "DryRun => don't run it" }
+                            } else {
+                                it.execute()
+                            }
                         }
                     }
                 }
+                maybeError?.let { error ->
+                    listOf(ChangeSetError(this, error))
+                } ?: emptyList()
             }
-            maybeError?.let { error ->
-                listOf(ChangeSetError(this, error))
-            } ?: emptyList()
         }
+        logger.info("$executionId is ignored, the precondition return false")
+        return emptyList()
     }
 }

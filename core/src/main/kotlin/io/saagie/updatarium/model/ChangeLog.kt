@@ -22,7 +22,11 @@ import io.saagie.updatarium.log.InMemoryAppenderManager
 import io.saagie.updatarium.model.UpdatariumError.ChangeSetError
 import mu.KLoggable
 
-data class ChangeLog(val id: String = "", val changeSets: List<ChangeSet> = emptyList()) : KLoggable {
+data class ChangeLog(
+    val id: String = "",
+    val preCondition: () -> Boolean = { true },
+    val changeSets: List<ChangeSet> = emptyList()
+) : KLoggable {
     override val logger = logger()
 
     /**
@@ -33,16 +37,20 @@ data class ChangeLog(val id: String = "", val changeSets: List<ChangeSet> = empt
         configuration: UpdatariumConfiguration,
         tags: List<String> = emptyList()
     ): ChangeLogReport {
-        configuration.persistEngine.checkConnection()
-        InMemoryAppenderManager.setup(persistConfig = configuration.persistEngine.configuration)
+        if (preCondition()) {
+            configuration.persistEngine.checkConnection()
+            InMemoryAppenderManager.setup(persistConfig = configuration.persistEngine.configuration)
 
-        val state = matchedChangeSets(tags).fold(ChangelogExecutionState()) { state, changeSet ->
-            state.execute(configuration.failFast) {
-                changeSet.execute(id, configuration)
+            val state = matchedChangeSets(tags).fold(ChangelogExecutionState()) { state, changeSet ->
+                state.execute(configuration.failFast) {
+                    changeSet.execute(id, configuration)
+                }
             }
+            InMemoryAppenderManager.tearDown()
+            return state.report
         }
-        InMemoryAppenderManager.tearDown()
-        return state.report
+        logger.info("$id is ignored, the precondition return false")
+        return ChangeLogReport.EMPTY
     }
 
     /**
@@ -57,4 +65,8 @@ data class ChangeLog(val id: String = "", val changeSets: List<ChangeSet> = empt
 
 data class ChangeLogReport(
     val changeSetExceptions: List<ChangeSetError>
-)
+) {
+    companion object {
+        val EMPTY = ChangeLogReport(emptyList())
+    }
+}

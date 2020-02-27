@@ -21,6 +21,11 @@ import mu.KotlinLogging
 
 typealias Tag = String
 
+typealias Predicate = () -> Boolean
+infix fun Predicate.and(predicate: Predicate) : Predicate = { this() && predicate() }
+infix fun Predicate.or(predicate: Predicate) : Predicate = { this() || predicate() }
+fun not(predicate: Predicate) : Predicate = { !predicate() }
+
 @DslMarker
 annotation class ChangelogDslMarker
 
@@ -56,6 +61,7 @@ fun changeLog(id: String = "", block: ChangeLogDsl.() -> Unit): ChangeLog =
  */
 @ChangelogDslMarker
 class ChangeLogDsl(val id: String) {
+    var preCondition: Predicate = { true }
     private var changeSetsDsl: MutableList<ChangeSetDsl> = mutableListOf()
 
     fun changeSet(id: String, author: String, block: ChangeSetDsl.() -> Unit) =
@@ -68,7 +74,7 @@ class ChangeLogDsl(val id: String) {
     fun changeLog(id: String = "", block: ChangeLogDsl.() -> Unit): Nothing = error("...")
 
     internal fun build(): ChangeLog =
-        ChangeLog(id, this.changeSetsDsl.map(ChangeSetDsl::build))
+        ChangeLog(id, preCondition, this.changeSetsDsl.map(ChangeSetDsl::build))
 }
 
 /**
@@ -79,6 +85,7 @@ class ChangeLogDsl(val id: String) {
  */
 @ChangelogDslMarker
 class ChangeSetDsl(val id: String, val author: String) {
+    var preCondition: Predicate = { true }
     private var actions: MutableList<ActionDsl> = mutableListOf()
 
     var tags: List<Tag> = emptyList()
@@ -97,6 +104,7 @@ class ChangeSetDsl(val id: String, val author: String) {
             id = id,
             author = author,
             tags = tags,
+            preCondition = preCondition,
             actions = actions.map(ActionDsl::build)
         )
 }
